@@ -10,7 +10,7 @@ const CONFIG_PATH = "/home/openclaw/.openclaw/openclaw.json";
 
 function isGatewayRunning(): boolean {
   try {
-    const result = execSync("pgrep -x openclaw-gateway 2>/dev/null || true", {
+    const result = execSync("pgrep -f openclaw-gateway 2>/dev/null || true", {
       encoding: "utf-8",
       timeout: 3000,
     }).trim();
@@ -23,7 +23,7 @@ function isGatewayRunning(): boolean {
 function getUptime(): string | null {
   try {
     const result = execSync(
-      "ps -o etime= -p $(pgrep -x openclaw-gateway | head -1) 2>/dev/null || true",
+      "ps -o etime= -p $(pgrep -f openclaw-gateway | head -1) 2>/dev/null || true",
       { encoding: "utf-8", timeout: 3000 }
     ).trim();
     return result || null;
