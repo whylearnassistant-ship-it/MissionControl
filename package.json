@@ -11,6 +11,7 @@
   "dependencies": {
     "@types/marked": "^5.0.2",
     "jose": "^6.2.2",
+    "json5": "^2.2.3",
     "lucide-react": "^0.577.0",
     "marked": "^17.0.5",
     "next": "16.2.0",

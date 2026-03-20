@@ -2,25 +2,15 @@ import { NextResponse } from "next/server";
 import { verifyAuth } from "@/lib/auth";
 import { readFile } from "fs/promises";
 import { execSync } from "child_process";
+import JSON5 from "json5";
 
 export const dynamic = "force-dynamic";
 
 const CONFIG_PATH = "/home/openclaw/.openclaw/openclaw.json";
 
-function parseJson5(text: string): Record<string, unknown> {
-  // Simple JSON5-ish parser: strip comments, trailing commas, unquoted keys
-  let cleaned = text
-    .replace(/\/\/.*$/gm, "")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/,(\s*[}\]])/g, "$1")
-    .replace(/([{,]\s*)(\w[\w$]*)\s*:/g, '$1"$2":')
-    .replace(/:\s*'([^']*)'/g, ': "$1"');
-  return JSON.parse(cleaned);
-}
-
 function isGatewayRunning(): boolean {
   try {
-    const result = execSync("pgrep -f 'openclaw.*gateway\\|node.*openclaw' 2>/dev/null || true", {
+    const result = execSync("pgrep -x openclaw-gateway 2>/dev/null || true", {
       encoding: "utf-8",
       timeout: 3000,
     }).trim();
@@ -33,7 +23,7 @@ function isGatewayRunning(): boolean {
 function getUptime(): string | null {
   try {
     const result = execSync(
-      "ps -o etime= -p $(pgrep -f 'openclaw' | head -1) 2>/dev/null || true",
+      "ps -o etime= -p $(pgrep -x openclaw-gateway | head -1) 2>/dev/null || true",
       { encoding: "utf-8", timeout: 3000 }
     ).trim();
     return result || null;
@@ -48,38 +38,39 @@ export async function GET() {
 
   try {
     const raw = await readFile(CONFIG_PATH, "utf-8");
-    const config = parseJson5(raw);
+    const config = JSON5.parse(raw);
 
-    const agents = config.agents as Record<string, unknown> | undefined;
-    const bindings = (config.bindings as Array<Record<string, unknown>>) || [];
-    const channels = config.channels as Record<string, unknown> | undefined;
+    const agents = config.agents || {};
+    const bindings = config.bindings || [];
+    const channels = config.channels || {};
 
-    const defaults = (agents?.defaults as Record<string, unknown>) || {};
-    const agentList = ((agents?.list as Array<Record<string, unknown>>) || []);
+    const defaults = agents.defaults || {};
+    const agentList = agents.list || [];
 
     const online = isGatewayRunning();
     const uptime = getUptime();
 
     // Build agent entries with their bindings and channel info
-    const parsedAgents = agentList.map((agent) => {
+    const parsedAgents = agentList.map((agent: Record<string, unknown>) => {
       const id = agent.id as string;
       const modelConfig = (agent.model as Record<string, unknown>) ||
         (defaults.model as Record<string, unknown>) || {};
       const model = (modelConfig.primary as string) || "unknown";
 
       // Find bindings for this agent
-      const agentBindings = bindings.filter((b) => b.agentId === id);
-      const boundChannels = agentBindings.map((b) => {
-        const match = b.match as Record<string, unknown>;
-        const peer = match?.peer as Record<string, unknown>;
-        const channelId = ((peer?.id as string) || "").replace("channel:", "");
-        return {
-          channel: match?.channel as string || "unknown",
-          accountId: match?.accountId as string || "default",
-          channelId,
-          guildId: match?.guildId as string || "",
-        };
-      });
+      const agentBindings = bindings
+        .filter((b: Record<string, unknown>) => b.agentId === id)
+        .map((b: Record<string, unknown>) => {
+          const match = b.match as Record<string, unknown>;
+          const peer = match?.peer as Record<string, unknown>;
+          const channelId = ((peer?.id as string) || "").replace("channel:", "");
+          return {
+            channel: (match?.channel as string) || "unknown",
+            accountId: (match?.accountId as string) || "default",
+            channelId,
+            guildId: (match?.guildId as string) || "",
+          };
+        });
 
       return {
         id,
@@ -87,14 +78,14 @@ export async function GET() {
         model,
         status: online ? "online" : "offline",
         uptime: online ? uptime : null,
-        bindings: boundChannels,
+        bindings: agentBindings,
       };
     });
 
     // Get Discord account info
-    const discord = (channels?.discord as Record<string, unknown>) || {};
-    const accounts = (discord.accounts as Record<string, unknown>) || {};
-    const accountNames = Object.keys(accounts).filter((k) => k !== "default");
+    const discord = channels.discord || {};
+    const accounts = discord.accounts || {};
+    const accountNames = Object.keys(accounts).filter((k: string) => k !== "default");
 
     return NextResponse.json({
       online,
@@ -102,13 +93,13 @@ export async function GET() {
       agents: parsedAgents,
       accounts: accountNames,
       gateway: {
-        port: ((config.gateway as Record<string, unknown>)?.port as number) || 18789,
-        mode: ((config.gateway as Record<string, unknown>)?.mode as string) || "unknown",
+        port: config.gateway?.port || 18789,
+        mode: config.gateway?.mode || "unknown",
       },
       defaults: {
-        model: ((defaults.model as Record<string, unknown>)?.primary as string) || "unknown",
-        maxConcurrent: (defaults.maxConcurrent as number) || 0,
-        workspace: (defaults.workspace as string) || "",
+        model: defaults.model?.primary || "unknown",
+        maxConcurrent: defaults.maxConcurrent || 0,
+        workspace: defaults.workspace || "",
       },
     });
   } catch (err) {
