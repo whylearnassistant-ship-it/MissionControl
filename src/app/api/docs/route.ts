@@ -213,6 +213,43 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ catalog });
   }
 
+  // Raw binary file serving (for images, etc.)
+  const raw = req.nextUrl.searchParams.get("raw");
+  if (raw) {
+    const fullPath = path.join(WORKSPACE, raw);
+    if (!fullPath.startsWith(WORKSPACE)) {
+      return new NextResponse("Forbidden", { status: 403 });
+    }
+    try {
+      const data = fs.readFileSync(fullPath);
+      const ext = path.extname(fullPath).toLowerCase().slice(1);
+      const mimeMap: Record<string, string> = {
+        png: "image/png",
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        gif: "image/gif",
+        webp: "image/webp",
+        svg: "image/svg+xml",
+        mp4: "video/mp4",
+        mov: "video/quicktime",
+        avi: "video/x-msvideo",
+        mp3: "audio/mpeg",
+        wav: "audio/wav",
+        pdf: "application/pdf",
+      };
+      const contentType = mimeMap[ext] || "application/octet-stream";
+      return new NextResponse(data, {
+        headers: {
+          "Content-Type": contentType,
+          "Content-Length": data.length.toString(),
+          "Cache-Control": "public, max-age=60",
+        },
+      });
+    } catch {
+      return new NextResponse("Not found", { status: 404 });
+    }
+  }
+
   // Single file content
   if (filePath) {
     const fullPath = path.join(WORKSPACE, filePath);
@@ -220,8 +257,21 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     try {
-      const stat = fs.statSync(fullPath);
-      if (stat.size > 500_000) {
+      const statInfo = fs.statSync(fullPath);
+      const ext = path.extname(fullPath).toLowerCase().slice(1);
+
+      // For binary/media files, return metadata only (use ?raw= to get content)
+      if (MEDIA_EXTS.has(ext)) {
+        return NextResponse.json({
+          content: null,
+          path: filePath,
+          binary: true,
+          mimeType: ext === "svg" ? "image/svg+xml" : `image/${ext}`,
+          size: statInfo.size,
+        });
+      }
+
+      if (statInfo.size > 500_000) {
         return NextResponse.json({ content: "File too large to preview (>500KB)", truncated: true });
       }
       const content = fs.readFileSync(fullPath, "utf-8");

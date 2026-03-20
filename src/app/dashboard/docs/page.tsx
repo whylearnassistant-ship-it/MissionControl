@@ -213,6 +213,19 @@ function TreeItem({
 
 // ─── Preview Panel ───────────────────────────────────────────────────────────
 
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg"]);
+const VIDEO_EXTS = new Set(["mp4", "mov", "avi", "webm"]);
+const AUDIO_EXTS = new Set(["mp3", "wav", "ogg", "m4a", "flac"]);
+const PDF_EXTS = new Set(["pdf"]);
+
+function isMediaFile(ext: string): boolean {
+  return IMAGE_EXTS.has(ext) || VIDEO_EXTS.has(ext) || AUDIO_EXTS.has(ext) || PDF_EXTS.has(ext);
+}
+
+function rawFileUrl(filePath: string): string {
+  return `/api/docs?raw=${encodeURIComponent(filePath)}`;
+}
+
 function PreviewPanel({
   file, content, loading, onClose,
 }: {
@@ -231,7 +244,13 @@ function PreviewPanel({
   if (!file) return null;
 
   const colors = CATEGORY_COLORS[file.category] || CATEGORY_COLORS.Other;
-  const isMarkdown = file.extension === "md";
+  const ext = file.extension.toLowerCase();
+  const isMarkdown = ext === "md";
+  const isImage = IMAGE_EXTS.has(ext);
+  const isVideo = VIDEO_EXTS.has(ext);
+  const isAudio = AUDIO_EXTS.has(ext);
+  const isPdf = PDF_EXTS.has(ext);
+  const isBinary = isImage || isVideo || isAudio || isPdf;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -250,13 +269,27 @@ function PreviewPanel({
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={handleCopy}
-                className="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-hover transition-colors"
-                title="Copy contents"
-              >
-                {copied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
-              </button>
+              {!isBinary && (
+                <button
+                  onClick={handleCopy}
+                  className="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-hover transition-colors"
+                  title="Copy contents"
+                >
+                  {copied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
+                </button>
+              )}
+              {isBinary && (
+                <a
+                  href={rawFileUrl(file.path)}
+                  download={file.name}
+                  className="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-hover transition-colors"
+                  title="Download file"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m0 0l-6-6m6 6l6-6M5 19h14" />
+                  </svg>
+                </a>
+              )}
               <button
                 onClick={onClose}
                 className="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-hover transition-colors"
@@ -278,6 +311,49 @@ function PreviewPanel({
           {loading ? (
             <div className="flex items-center justify-center h-40">
               <div className="w-6 h-6 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+            </div>
+          ) : isImage ? (
+            <div className="flex flex-col items-center gap-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={rawFileUrl(file.path)}
+                alt={file.name}
+                className="max-w-full max-h-[70vh] object-contain rounded-lg border border-border"
+              />
+              <p className="text-xs text-text-tertiary">{file.name} · {formatSize(file.size)}</p>
+            </div>
+          ) : isVideo ? (
+            <div className="flex flex-col items-center gap-4">
+              <video
+                src={rawFileUrl(file.path)}
+                controls
+                className="max-w-full max-h-[70vh] rounded-lg border border-border"
+              >
+                Your browser does not support the video tag.
+              </video>
+              <p className="text-xs text-text-tertiary">{file.name} · {formatSize(file.size)}</p>
+            </div>
+          ) : isAudio ? (
+            <div className="flex flex-col items-center gap-4 py-8">
+              <div className="w-24 h-24 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center">
+                <svg className="w-10 h-10 text-accent" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-text-primary">{file.name}</p>
+              <audio src={rawFileUrl(file.path)} controls className="w-full max-w-md">
+                Your browser does not support the audio tag.
+              </audio>
+              <p className="text-xs text-text-tertiary">{formatSize(file.size)}</p>
+            </div>
+          ) : isPdf ? (
+            <div className="flex flex-col items-center gap-4 h-full">
+              <iframe
+                src={rawFileUrl(file.path)}
+                className="w-full flex-1 min-h-[60vh] rounded-lg border border-border"
+                title={file.name}
+              />
+              <p className="text-xs text-text-tertiary">{file.name} · {formatSize(file.size)}</p>
             </div>
           ) : content ? (
             isMarkdown ? (
