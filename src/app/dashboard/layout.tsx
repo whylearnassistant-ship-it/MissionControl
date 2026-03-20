@@ -9,6 +9,7 @@ import {
   FolderKanban,
   Brain,
   FileText,
+  Building2,
   LogOut,
   Cpu,
   Menu,
@@ -17,6 +18,7 @@ import {
 
 const NAV_ITEMS = [
   { href: "/dashboard/agents", label: "Agents", icon: Bot },
+  { href: "/dashboard/office", label: "Office", icon: Building2 },
   { href: "/dashboard/tasks", label: "Tasks", icon: ListTodo },
   { href: "/dashboard/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/dashboard/projects", label: "Projects", icon: FolderKanban },
