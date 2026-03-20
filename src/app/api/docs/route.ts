@@ -6,7 +6,18 @@ import path from "path";
 export const dynamic = "force-dynamic";
 
 const WORKSPACE = "/home/openclaw/.openclaw/workspace";
-const IGNORE = new Set([".git", "node_modules", ".next", ".cache", "__pycache__", ".venv"]);
+const IGNORE = new Set([".git", "node_modules", ".next", ".cache", "__pycache__", ".venv", "dist", "build"]);
+
+const CONFIG_ROOT_FILES = new Set([
+  "AGENTS.md", "SOUL.md", "USER.md", "IDENTITY.md", "HEARTBEAT.md", "TOOLS.md",
+]);
+
+const CODE_EXTS = new Set(["ts", "tsx", "js", "jsx", "py", "sh", "css"]);
+const MEDIA_EXTS = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp", "mp3", "wav", "mp4", "mov", "avi"]);
+const TEXT_EXTS = new Set([
+  "md", "txt", "ts", "tsx", "js", "jsx", "py", "sh", "css", "json", "json5",
+  "env", "yaml", "yml", "toml", "cfg", "ini", "csv", "html", "xml", "sql", "log",
+]);
 
 interface FileNode {
   name: string;
@@ -16,6 +27,137 @@ interface FileNode {
   size?: number;
 }
 
+interface CatalogEntry {
+  path: string;
+  name: string;
+  extension: string;
+  size: number;
+  modifiedAt: string;
+  category: string;
+  preview: string;
+}
+
+function categorize(relPath: string, name: string, ext: string): string {
+  const parts = relPath.split("/");
+
+  // Memory — files inside memory/ directory
+  if (parts[0] === "memory") return "Memory";
+
+  // Config — root config-like files
+  if (parts.length === 1 && CONFIG_ROOT_FILES.has(name)) return "Config";
+  if (ext === "json5" || ext === "env") return "Config";
+  if (parts.length === 1 && (ext === "json" || ext === "env")) return "Config";
+
+  // Data — .csv, .sqlite, .db, .json inside data directories
+  if (parts.some((p) => p.toLowerCase() === "data")) {
+    if (["csv", "sqlite", "db", "json"].includes(ext)) return "Data";
+  }
+
+  // Media
+  if (MEDIA_EXTS.has(ext)) return "Media";
+
+  // Code
+  if (CODE_EXTS.has(ext)) return "Code";
+
+  // Documentation — .md files not in memory/ and not config
+  if (ext === "md") return "Documentation";
+
+  // Data files anywhere
+  if (["csv", "sqlite", "db"].includes(ext)) return "Data";
+
+  return "Other";
+}
+
+function isTextFile(ext: string): boolean {
+  return TEXT_EXTS.has(ext);
+}
+
+function getPreview(fullPath: string, ext: string): string {
+  if (!isTextFile(ext)) return "";
+  try {
+    const fd = fs.openSync(fullPath, "r");
+    const buf = Buffer.alloc(200);
+    const bytesRead = fs.readSync(fd, buf, 0, 200, 0);
+    fs.closeSync(fd);
+    return buf.toString("utf-8", 0, bytesRead).replace(/\n/g, " ").trim();
+  } catch {
+    return "";
+  }
+}
+
+function collectFiles(dir: string, relativeTo: string, depth = 0): CatalogEntry[] {
+  if (depth > 6) return [];
+  const results: CatalogEntry[] = [];
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (IGNORE.has(entry.name) || entry.name.startsWith(".")) continue;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        results.push(...collectFiles(fullPath, relativeTo, depth + 1));
+      } else {
+        try {
+          const stat = fs.statSync(fullPath);
+          const relPath = path.relative(relativeTo, fullPath);
+          const ext = entry.name.includes(".") ? entry.name.split(".").pop()!.toLowerCase() : "";
+          results.push({
+            path: relPath,
+            name: entry.name,
+            extension: ext,
+            size: stat.size,
+            modifiedAt: stat.mtime.toISOString(),
+            category: categorize(relPath, entry.name, ext),
+            preview: getPreview(fullPath, ext),
+          });
+        } catch {
+          // skip unreadable files
+        }
+      }
+    }
+  } catch {
+    // skip unreadable dirs
+  }
+  return results;
+}
+
+function searchFiles(query: string): CatalogEntry[] {
+  const all = collectFiles(WORKSPACE, WORKSPACE);
+  const q = query.toLowerCase();
+  const results: CatalogEntry[] = [];
+
+  for (const file of all) {
+    // Check name match
+    if (file.name.toLowerCase().includes(q)) {
+      results.push(file);
+      continue;
+    }
+    // Check content match for text files
+    if (isTextFile(file.extension)) {
+      try {
+        const fullPath = path.join(WORKSPACE, file.path);
+        const fd = fs.openSync(fullPath, "r");
+        const buf = Buffer.alloc(10240);
+        const bytesRead = fs.readSync(fd, buf, 0, 10240, 0);
+        fs.closeSync(fd);
+        const content = buf.toString("utf-8", 0, bytesRead);
+        const lowerContent = content.toLowerCase();
+        const idx = lowerContent.indexOf(q);
+        if (idx !== -1) {
+          // Extract snippet around match
+          const start = Math.max(0, idx - 60);
+          const end = Math.min(content.length, idx + q.length + 60);
+          const snippet = (start > 0 ? "..." : "") + content.slice(start, end).replace(/\n/g, " ") + (end < content.length ? "..." : "");
+          results.push({ ...file, preview: snippet });
+        }
+      } catch {
+        // skip
+      }
+    }
+  }
+  return results;
+}
+
+// --- Original tree builder ---
 function buildTree(dir: string, relativeTo: string, depth = 0): FileNode[] {
   if (depth > 4) return [];
   try {
@@ -55,11 +197,25 @@ export async function GET(req: NextRequest) {
   const user = await verifyAuth();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const mode = req.nextUrl.searchParams.get("mode");
+  const search = req.nextUrl.searchParams.get("search");
   const filePath = req.nextUrl.searchParams.get("file");
 
+  // Search mode
+  if (search) {
+    const results = searchFiles(search);
+    return NextResponse.json({ results, query: search });
+  }
+
+  // Catalog mode — flat list with metadata
+  if (mode === "catalog") {
+    const catalog = collectFiles(WORKSPACE, WORKSPACE);
+    return NextResponse.json({ catalog });
+  }
+
+  // Single file content
   if (filePath) {
     const fullPath = path.join(WORKSPACE, filePath);
-    // Security: ensure within workspace
     if (!fullPath.startsWith(WORKSPACE)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -75,6 +231,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Default — tree mode
   const tree = buildTree(WORKSPACE, WORKSPACE);
   return NextResponse.json({ tree });
 }
