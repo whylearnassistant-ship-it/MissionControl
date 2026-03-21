@@ -10,6 +10,7 @@ export interface Task {
   status: "backlog" | "todo" | "in-progress" | "done";
   priority: "low" | "medium" | "high" | "urgent";
   assignee?: string;
+  source?: string;
   createdAt: string;
   updatedAt: string;
   labels: string[];
@@ -46,7 +47,8 @@ function defaultDB(): DB {
         description: "Configure GitHub Actions for automated testing and deployment",
         status: "todo",
         priority: "high",
-        assignee: "admin",
+        assignee: "Coder",
+        source: "TriWenClaw via Discord",
         createdAt: "2026-03-18T10:00:00Z",
         updatedAt: "2026-03-18T10:00:00Z",
         labels: ["infrastructure"],
@@ -57,6 +59,8 @@ function defaultDB(): DB {
         description: "Create reusable UI components for the dashboard",
         status: "in-progress",
         priority: "medium",
+        assignee: "Coder",
+        source: "MissionControl build",
         createdAt: "2026-03-17T14:00:00Z",
         updatedAt: "2026-03-19T09:00:00Z",
         labels: ["design", "frontend"],
@@ -67,6 +71,8 @@ function defaultDB(): DB {
         description: "Write comprehensive API docs for all endpoints",
         status: "backlog",
         priority: "low",
+        assignee: "Main",
+        source: "Backlog",
         createdAt: "2026-03-16T08:00:00Z",
         updatedAt: "2026-03-16T08:00:00Z",
         labels: ["docs"],
@@ -77,7 +83,8 @@ function defaultDB(): DB {
         description: "Create migration scripts for schema changes",
         status: "done",
         priority: "high",
-        assignee: "admin",
+        assignee: "Coder",
+        source: "TriWenClaw via Discord",
         createdAt: "2026-03-15T12:00:00Z",
         updatedAt: "2026-03-19T16:00:00Z",
         labels: ["backend"],
@@ -88,6 +95,8 @@ function defaultDB(): DB {
         description: "Build analytics view with charts and metrics",
         status: "backlog",
         priority: "medium",
+        assignee: "Coder",
+        source: "Backlog",
         createdAt: "2026-03-14T11:00:00Z",
         updatedAt: "2026-03-14T11:00:00Z",
         labels: ["feature"],

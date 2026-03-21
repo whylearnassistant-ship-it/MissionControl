@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Plus, GripVertical, X, Trash2, Tag } from "lucide-react";
+import { Plus, GripVertical, X, Trash2, Tag, User, ArrowRight } from "lucide-react";
 
 interface Task {
   id: string;
@@ -10,10 +10,17 @@ interface Task {
   status: "backlog" | "todo" | "in-progress" | "done";
   priority: "low" | "medium" | "high" | "urgent";
   assignee?: string;
+  source?: string;
   createdAt: string;
   updatedAt: string;
   labels: string[];
 }
+
+const ASSIGNEE_COLORS: Record<string, string> = {
+  Main: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  Coder: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  Sub: "bg-green-500/20 text-green-400 border-green-500/30",
+};
 
 const COLUMNS = [
   { id: "backlog" as const, label: "Backlog", color: "text-text-tertiary" },
@@ -34,7 +41,7 @@ export default function TasksPage() {
   const [loading, setLoading] = useState(true);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [newTask, setNewTask] = useState<{ title: string; description: string; priority: Task["priority"]; status: Task["status"] }>({ title: "", description: "", priority: "medium", status: "backlog" });
+  const [newTask, setNewTask] = useState<{ title: string; description: string; priority: Task["priority"]; status: Task["status"]; assignee: string; source: string }>({ title: "", description: "", priority: "medium", status: "backlog", assignee: "", source: "" });
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -65,7 +72,7 @@ export default function TasksPage() {
     });
     const d = await res.json();
     if (d.task) setTasks((prev) => [...prev, d.task]);
-    setNewTask({ title: "", description: "", priority: "medium", status: "backlog" });
+    setNewTask({ title: "", description: "", priority: "medium", status: "backlog", assignee: "", source: "" });
     setShowCreate(false);
   };
 
@@ -173,6 +180,32 @@ export default function TasksPage() {
                   ))}
                 </select>
               </div>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs text-text-tertiary mb-1.5">Assigned To</label>
+                  <select
+                    value={newTask.assignee}
+                    onChange={(e) => setNewTask((p) => ({ ...p, assignee: e.target.value }))}
+                    className="w-full px-4 py-2.5 bg-bg-tertiary border border-border rounded-lg text-text-primary focus:outline-none focus:border-accent transition-colors"
+                  >
+                    <option value="">Unassigned</option>
+                    <option value="Main">Main Agent</option>
+                    <option value="Coder">Coder Agent</option>
+                    <option value="Sub">Subagent</option>
+                    <option value="Human">Human</option>
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs text-text-tertiary mb-1.5">Source</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Discord, Slack, Manual"
+                    value={newTask.source}
+                    onChange={(e) => setNewTask((p) => ({ ...p, source: e.target.value }))}
+                    className="w-full px-4 py-2.5 bg-bg-tertiary border border-border rounded-lg text-text-primary placeholder-text-tertiary focus:outline-none focus:border-accent transition-colors"
+                  />
+                </div>
+              </div>
               <button
                 onClick={createTask}
                 disabled={!newTask.title.trim()}
@@ -224,7 +257,24 @@ export default function TasksPage() {
                         {task.description && (
                           <p className="text-xs text-text-tertiary mt-1 line-clamp-2">{task.description}</p>
                         )}
-                        <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        {/* Assignee & Source */}
+                        {(task.assignee || task.source) && (
+                          <div className="flex items-center gap-2 mt-2 text-[11px]">
+                            {task.assignee && (
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border font-medium ${ASSIGNEE_COLORS[task.assignee] || "bg-bg-tertiary text-text-secondary border-border"}`}>
+                                <User className="w-2.5 h-2.5" />
+                                {task.assignee}
+                              </span>
+                            )}
+                            {task.source && (
+                              <span className="inline-flex items-center gap-1 text-text-tertiary">
+                                <ArrowRight className="w-2.5 h-2.5" />
+                                {task.source}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                           <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded border ${PRIORITY_COLORS[task.priority]}`}>
                             {task.priority}
                           </span>
